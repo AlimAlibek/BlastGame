@@ -14,10 +14,8 @@ const { ccclass, property } = _decorator;
  *
  */
 type TileType = {
-    colIndex: number,
-    rowIndex: number,
     isCheckedOutNeighboring: boolean,
-    tileNode: Node
+    node: Node
 } 
 
 @ccclass('Field')
@@ -26,10 +24,10 @@ export class Field extends Component {
     private columnsAmount: number = 8;
     private rowsAmount: number = 8;
     private firstColumnPositionByX: number = -179;
-    private tileWidth: number = 51;
+    private tileSize: number = 51;
+    private fieldHeight: number = 420;
     private matrix: TileType[][] = [];
-
-
+    private minNumberOfTilesForBlast: number = 2;
 
     @property({type: Prefab})
     private greenPrefab: Prefab | null = null;
@@ -52,44 +50,60 @@ export class Field extends Component {
 
     start () {
         if (this.tilePrefabs.length && !this.tilePrefabs.find(prfb => prfb === null)) {
-           this.fillMatrix(); 
+           this.createMatrix(); 
         }
     }
 
-    fillMatrix() {
+    createMatrix() {
         for (let i = 0; i < this.columnsAmount; i++) {
 
             let column: TileType[] = [];
             for (let j = 0; j < this.rowsAmount; j++) {
-
-                const randomIndex = Math.floor(Math.random() * this.tilePrefabs.length);
-                const tileNode = this.createTileNode(randomIndex);
-
-                const tileObj : TileType = {
-                    colIndex: i,
-                    rowIndex: j,
-                    isCheckedOutNeighboring: false,
-                    tileNode
-                }
+                const tileObj = this.createTile();
                 column.push(tileObj);
-                this.addTile(tileObj);
+                this.addTileNode(tileObj, i, j);
             }
             this.matrix.push(column);
         }
         console.log(this.matrix);
     }
-    createTileNode(prefabIndex: number) {
-        const tileNode = instantiate(this.tilePrefabs[prefabIndex])
-        return tileNode
+
+    fillMatrix() {
+        for (let i = 0; i < this.columnsAmount; i++) {
+            const column = this.matrix[i];
+
+            for (let j = column.length; j < this.rowsAmount; j++) {
+                const tileObj = this.createTile();
+                column.push(tileObj);
+                this.addTileNode(tileObj, i, j);
+            }
+        }
     }
 
-    addTile(tileObj: TileType) {
-        this.node.addChild(tileObj.tileNode);
-        tileObj.tileNode.setPosition(new Vec3(this.firstColumnPositionByX + this.tileWidth * tileObj.colIndex, 400));
+    createTile() {
+        const randomPrefabIndex = Math.floor(Math.random() * this.tilePrefabs.length);
+        const tileNode = instantiate(this.tilePrefabs[randomPrefabIndex])
+        return {
+            isCheckedOutNeighboring: false,
+            node: tileNode
+        }
+    }
+
+    addTileNode(tileObj: TileType, colIndex: number, rowIndex: number) {
+
+        setTimeout(() => {
+            this.node.addChild(tileObj.node); 
+        }, 100); 
+        
+        tileObj.node.setPosition(new Vec3(
+            this.firstColumnPositionByX + this.tileSize * colIndex, 
+            this.fieldHeight/2 + this.tileSize*rowIndex,
+        ));
+
         const onTileNodeClick = (event: EventMouse) => { 
             this.onTileClick(tileObj, event.getButton());
         }
-        tileObj.tileNode.on(SystemEvent.EventType.MOUSE_UP, onTileNodeClick);
+        tileObj.node.on(SystemEvent.EventType.MOUSE_UP, onTileNodeClick);
     }
 
     onTileClick(tileObj: TileType, mouseKey: number) {
@@ -97,12 +111,74 @@ export class Field extends Component {
             case 0 :
                 this.checkNeighbors(tileObj);
                 break;
+            case 2 : 
+                // вызов метода перестановки плиток
+                break;
             default: break;
         }
     }
 
     checkNeighbors(tileObj: TileType) {
+        const tileNodeName = tileObj.node.name;
+        const {col, row} = this.getTilePosition(tileObj);
+        const sameTiles: TileType[] = [];
+        
+        const check = (col: number, row: number) => {
+            const curTile = this.matrix[col][row];
+            
+            if (curTile.isCheckedOutNeighboring) return;
 
+            sameTiles.push(curTile);
+            curTile.isCheckedOutNeighboring = true;
+            
+            if (this.matrix[col][row-1]?.node.name === tileNodeName) {
+                check(col, row-1);
+            }
+            if (this.matrix[col][row+1]?.node.name === tileNodeName) {
+                check(col, row+1);
+            }
+            if (this.matrix[col-1]?.[row].node.name === tileNodeName) {
+                check(col-1, row);
+            }
+            if (this.matrix[col+1]?.[row].node.name === tileNodeName) {
+                check(col+1, row);
+            }
+        }
+        
+        check(col, row);
+        if (sameTiles.length < this.minNumberOfTilesForBlast) {
+            sameTiles.forEach(tile => tile.isCheckedOutNeighboring = false);
+            return;
+        }
+
+        this.blastTiles(sameTiles);
+        
+    }
+
+    getTilePosition(tileObj: TileType) {
+        let pos: {col: number, row: number} = null;
+        for (let i = 0; (i < this.matrix.length && !pos); i++) {
+
+            for (let j = 0; j < this.rowsAmount && !pos; j++) {
+
+                if (this.matrix[i][j].node === tileObj.node) {
+                    pos = {col: i, row: j}
+                    console.log('pos', pos);
+                }
+            }
+        }
+        return pos;
+    }
+
+    blastTiles(sameTiles: TileType[]) {
+        sameTiles.forEach(tile => {
+            tile.node.destroy();
+        });
+        this.matrix = this.matrix.map(col => {
+            return col.filter(tile => !tile.isCheckedOutNeighboring);
+        })
+        this.fillMatrix();
+        console.log(this.matrix);
     }
 
 
