@@ -20,12 +20,14 @@ type TileType = {
 
 @ccclass('Field')
 export class Field extends Component {
-
-    private columnsAmount: number = 8;
-    private rowsAmount: number = 8;
-    private firstColumnPositionByX: number = -179;
-    private tileSize: number = 51;
-    private fieldHeight: number = 420;
+   
+    private tileSize: number = 50;
+    private sideSpace: number = 1;
+    private fieldHeight: number = 440;
+    private fieldWidth: number = 440;
+    private columnsAmount: number = Math.floor(this.fieldWidth/this.tileSize);
+    private rowsAmount: number = Math.floor(this.fieldHeight/this.tileSize);
+    private firstColumnPositionByX = (this.fieldWidth/2 - this.fieldWidth % this.tileSize/2 - this.tileSize/2 + this.sideSpace*this.columnsAmount/2) * -1;
     private matrix: TileType[][] = [];
     private minNumberOfTilesForBlast: number = 2;
 
@@ -49,59 +51,63 @@ export class Field extends Component {
     }
 
     start () {
+        console.log(this.firstColumnPositionByX)
         if (this.tilePrefabs.length && !this.tilePrefabs.find(prfb => prfb === null)) {
-           this.createMatrix(); 
+           this.fillMatrix(); 
         }
-    }
-
-    createMatrix() {
-        for (let i = 0; i < this.columnsAmount; i++) {
-
-            let column: TileType[] = [];
-            for (let j = 0; j < this.rowsAmount; j++) {
-                const tileObj = this.createTile();
-                column.push(tileObj);
-                this.addTileNode(tileObj, i, j);
-            }
-            this.matrix.push(column);
-        }
-        console.log(this.matrix);
     }
 
     fillMatrix() {
+
         for (let i = 0; i < this.columnsAmount; i++) {
-            const column = this.matrix[i];
+            const column: TileType[] = this.matrix[i] || [];
 
             for (let j = column.length; j < this.rowsAmount; j++) {
-                const tileObj = this.createTile();
+                const tileObj = this.generateTile(null);
                 column.push(tileObj);
                 this.addTileNode(tileObj, i, j);
+            }
+
+            if (!this.matrix[i]) {
+                this.matrix[i] = column;
             }
         }
     }
 
-    createTile() {
-        const randomPrefabIndex = Math.floor(Math.random() * this.tilePrefabs.length);
-        const tileNode = instantiate(this.tilePrefabs[randomPrefabIndex])
+    generateTile(prefabName: string | null) {
+        let tileNode: Node = null;
+        
+        if (prefabName) {
+            const prefab: Prefab = this.tilePrefabs.find(prfb => prfb.data.name === prefabName)
+            if (prefab) {
+             tileNode = instantiate(prefab);   
+            }
+        } else {
+            const randomPrefabIndex = Math.floor(Math.random() * this.tilePrefabs.length);
+            tileNode = instantiate(this.tilePrefabs[randomPrefabIndex]);
+        }   
+
         return {
             isCheckedOutNeighboring: false,
             node: tileNode
         }
+
     }
 
     addTileNode(tileObj: TileType, colIndex: number, rowIndex: number) {
+
+        tileObj.node.setPosition(new Vec3(
+            this.firstColumnPositionByX + (this.tileSize + this.sideSpace) * colIndex + this.sideSpace, 
+            this.fieldHeight/2 + this.tileSize*rowIndex,
+        ));
 
         setTimeout(() => {
             this.node.addChild(tileObj.node); 
         }, 100); 
         
-        tileObj.node.setPosition(new Vec3(
-            this.firstColumnPositionByX + this.tileSize * colIndex, 
-            this.fieldHeight/2 + this.tileSize*rowIndex,
-        ));
-
         const onTileNodeClick = (event: EventMouse) => { 
             this.onTileClick(tileObj, event.getButton());
+            console.log(event.target["_id"]);
         }
         tileObj.node.on(SystemEvent.EventType.MOUSE_UP, onTileNodeClick);
     }
@@ -112,7 +118,7 @@ export class Field extends Component {
                 this.checkNeighbors(tileObj);
                 break;
             case 2 : 
-                // вызов метода перестановки плиток
+                this.shuffleMatrix();
                 break;
             default: break;
         }
@@ -163,7 +169,6 @@ export class Field extends Component {
 
                 if (this.matrix[i][j].node === tileObj.node) {
                     pos = {col: i, row: j}
-                    console.log('pos', pos);
                 }
             }
         }
@@ -178,7 +183,37 @@ export class Field extends Component {
             return col.filter(tile => !tile.isCheckedOutNeighboring);
         })
         this.fillMatrix();
-        console.log(this.matrix);
+    }
+
+    shuffleMatrix() {
+
+        for (let i = this.matrix.length - 1; i > 0; i-- ) {
+            let tmpCol = this.matrix[i];
+            let rndColI = Math.floor(Math.random() * (i + 1));
+
+            for (let j = tmpCol.length - 1; j > 0; j-- ) {
+                const tmpTile = tmpCol[j];
+                const rndRowIndex = Math.floor(Math.random() * (j + 1));
+                tmpCol[j] = tmpCol[rndRowIndex];
+                tmpCol[rndRowIndex] = tmpTile;
+            }
+
+            this.matrix[i] = this.matrix[rndColI];
+            this.matrix[rndColI] = tmpCol;
+        }
+        
+        for (let i = 0; i < this.columnsAmount; i++) {
+
+            for (let j = 0; j < this.rowsAmount; j++) {   
+                const newTile = this.generateTile(this.matrix[i][j].node.name);
+                const oldTile = this.matrix[i][j];
+                this.matrix[i][j] = newTile;
+                oldTile.node.destroy();
+
+                this.addTileNode(newTile, i, j); 
+               
+            }
+        }
     }
 
 
@@ -187,14 +222,3 @@ export class Field extends Component {
 
     // }
 }
-
-/**
- * [1] Class member could be defined like this.
- * [2] Use `property` decorator if your want the member to be serializable.
- * [3] Your initialization goes here.
- * [4] Your update function goes here.
- *
- * Learn more about scripting: https://docs.cocos.com/creator/3.3/manual/en/scripting/
- * Learn more about CCClass: https://docs.cocos.com/creator/3.3/manual/en/scripting/ccclass.html
- * Learn more about life-cycle callbacks: https://docs.cocos.com/creator/3.3/manual/en/scripting/life-cycle-callbacks.html
- */
