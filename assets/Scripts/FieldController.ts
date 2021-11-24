@@ -2,25 +2,18 @@
 import { _decorator, Component, Node, Prefab, instantiate, Vec3, systemEvent, SystemEvent, EventMouse } from 'cc';
 const { ccclass, property } = _decorator;
 
-/**
- * Predefined variables
- * Name = Field
- * DateTime = Sun Nov 21 2021 13:03:19 GMT+0300 (Москва, стандартное время)
- * Author = Alibek_Alim_
- * FileBasename = Field.ts
- * FileBasenameNoExtension = Field
- * URL = db://assets/Scripts/Field.ts
- * ManualUrl = https://docs.cocos.com/creator/3.3/manual/en/
- *
- */
+
 type TileType = {
     isCheckedOutNeighboring: boolean,
     node: Node
 } 
 
-@ccclass('Field')
-export class Field extends Component {
+
+@ccclass('FieldController')
+export class FieldController extends Component {
    
+    private isPlaying: boolean = false;
+
     private tileSize: number = 50;
     private sideSpace: number = 1;
     private fieldHeight: number = 440;
@@ -50,10 +43,12 @@ export class Field extends Component {
         ]
     }
 
-    start () {
-        console.log(this.firstColumnPositionByX)
-        if (this.tilePrefabs.length && !this.tilePrefabs.find(prfb => prfb === null)) {
-           this.fillMatrix(); 
+    setIsPlaying(status: boolean) {
+        if (status) {
+            this.fillMatrix();
+            this.isPlaying = true;
+        } else {
+            this.isPlaying = false;
         }
     }
 
@@ -63,7 +58,7 @@ export class Field extends Component {
             const column: TileType[] = this.matrix[i] || [];
 
             for (let j = column.length; j < this.rowsAmount; j++) {
-                const tileObj = this.generateTile(null);
+                const tileObj = this.generateTileObj(null);
                 column.push(tileObj);
                 this.addTileNode(tileObj, i, j);
             }
@@ -74,7 +69,7 @@ export class Field extends Component {
         }
     }
 
-    generateTile(prefabName: string | null) {
+    generateTileObj(prefabName: string | null) {
         let tileNode: Node = null;
         
         if (prefabName) {
@@ -107,12 +102,15 @@ export class Field extends Component {
         
         const onTileNodeClick = (event: EventMouse) => { 
             this.onTileClick(tileObj, event.getButton());
-            console.log(event.target["_id"]);
         }
         tileObj.node.on(SystemEvent.EventType.MOUSE_UP, onTileNodeClick);
     }
 
     onTileClick(tileObj: TileType, mouseKey: number) {
+        if (!this.isPlaying) {
+            return;
+        }
+
         switch(mouseKey) {
             case 0 :
                 this.checkNeighbors(tileObj);
@@ -183,10 +181,13 @@ export class Field extends Component {
             return col.filter(tile => !tile.isCheckedOutNeighboring);
         })
         this.fillMatrix();
+        this.node.emit("TurnEnd", sameTiles.length);
     }
 
     shuffleMatrix() {
-
+    // Перемешивает уже имеющиеся на поле плитки.
+    // Возможно стоит оптимизировать, но метод вызывается довольно редко, 
+    //   поэтому пока оставлю 
         for (let i = this.matrix.length - 1; i > 0; i-- ) {
             let tmpCol = this.matrix[i];
             let rndColI = Math.floor(Math.random() * (i + 1));
@@ -205,7 +206,7 @@ export class Field extends Component {
         for (let i = 0; i < this.columnsAmount; i++) {
 
             for (let j = 0; j < this.rowsAmount; j++) {   
-                const newTile = this.generateTile(this.matrix[i][j].node.name);
+                const newTile = this.generateTileObj(this.matrix[i][j].node.name);
                 const oldTile = this.matrix[i][j];
                 this.matrix[i][j] = newTile;
                 oldTile.node.destroy();
@@ -216,9 +217,4 @@ export class Field extends Component {
         }
     }
 
-
-    // update (deltaTime: number) {
-    //     // [4]
-
-    // }
 }
