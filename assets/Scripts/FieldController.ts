@@ -2,13 +2,11 @@
 import { _decorator, Component, Node, Prefab, instantiate, Vec3, SystemEvent, EventMouse, Animation } from 'cc';
 const { ccclass, property } = _decorator;
 
-
 type TileType = {
     colIndex: number,
     isCheckedOutNeighboring: boolean,
     node: Node
 } 
-
 
 @ccclass('FieldController')
 export class FieldController extends Component {
@@ -279,8 +277,6 @@ export class FieldController extends Component {
 
     public shuffleMatrix() {
     // Перемешивает уже имеющиеся на поле плитки.
-    // Возможно стоит оптимизировать, но метод вызывается довольно редко, 
-    //   поэтому пока оставлю 
 
         if (!this.isPlaying) {
             return;
