@@ -1,5 +1,5 @@
 
-import { _decorator, Component, Node, Label } from 'cc';
+import { _decorator, Component, Node, Label, Sprite, Vec3 } from 'cc';
 import {FieldController} from './FieldController';
 const { ccclass, property } = _decorator;
 
@@ -12,9 +12,9 @@ enum GameResult {
 @ccclass('Manager')
 export class Manager extends Component {
 
-    private turns: number = 7;
+    private turns: number = 30;
     private score: number = 0;
-    private scoreForWin: number = 30;
+    private scoreForWin: number = 100;
     private restOfTurns: number = this.turns;
 
     private numberOfShuffles: number = 3;
@@ -36,6 +36,9 @@ export class Manager extends Component {
 
     @property({type: Label})
     private shuffleButtonScore: Label = null;
+
+    @property({type: Sprite})
+    private progress: Sprite | null = null;
     
     start () {  
         this.onGameInit();
@@ -108,6 +111,8 @@ export class Manager extends Component {
 
         this.updateCounter();
         this.checkCurrentGameProgress();
+
+        
     }
 
     checkCurrentGameProgress() {
@@ -122,6 +127,7 @@ export class Manager extends Component {
         this.turnsLabel.string = this.restOfTurns.toString();
         this.scoreLabel.string = this.score.toString();
         this.shuffleButtonScore.string = this.restNumberOfShuffles.toString();
+        this.progress.node.setScale(new Vec3(this.score/this.scoreForWin, 1));
     }
 
     onShuffleClick() {

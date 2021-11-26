@@ -27,7 +27,7 @@ export class FieldController extends Component {
     private minNumberOfTilesForBlast: number = 2;
     private checkingIsPossibilityToBlast: boolean = false;
 
-    private minNumberOfBlastedTilesForSuperTile: number = 4;
+    private minNumberOfBlastedTilesForSuperTile: number = 5;
     private isSuperTile: {colIndex: number, rowIndex: number} | null = null;
 
     @property({type: Prefab})
@@ -265,6 +265,9 @@ export class FieldController extends Component {
         superTileObj.node.off(SystemEvent.EventType.MOUSE_UP);
 
         superTileObj.node.on(SystemEvent.EventType.MOUSE_UP, () => {
+        if (!this.isPlaying) {
+            return;
+        }    
         // супер тайл сжигает весь столбец 
             const thisCol = this.matrix[superTileObj.colIndex]
             this.matrix[superTileObj.colIndex] = []
