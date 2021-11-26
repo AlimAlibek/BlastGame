@@ -2,12 +2,12 @@
   "ver": "1.1.32",
   "importer": "prefab",
   "imported": true,
-  "uuid": "5555fc57-d1bc-49ed-99d1-eb16f45c1918",
+  "uuid": "12b3558e-f413-4a82-af51-cbd9ba290ee9",
   "files": [
     ".json"
   ],
   "subMetas": {},
   "userData": {
-    "syncNodeName": "PurpleTIle"
+    "syncNodeName": "SuperTile"
   }
 }

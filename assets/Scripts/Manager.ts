@@ -12,9 +12,9 @@ enum GameResult {
 @ccclass('Manager')
 export class Manager extends Component {
 
-    private turns: number = 10;
+    private turns: number = 7;
     private score: number = 0;
-    private scoreForWin: number = 50;
+    private scoreForWin: number = 30;
     private restOfTurns: number = this.turns;
 
     private numberOfShuffles: number = 3;
@@ -53,6 +53,7 @@ export class Manager extends Component {
         this.updateCounter();
         this.fieldController.setCheckingIsPossibilityToBlast(false);
         this.fieldController.setIsPlaying(false);
+        this.fieldController.clearMatrix();
     }
 
     onGamePlay() {

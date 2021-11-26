@@ -1,9 +1,10 @@
 
-import { _decorator, Component, Node, Prefab, instantiate, Vec3, systemEvent, SystemEvent, EventMouse } from 'cc';
+import { _decorator, Component, Node, Prefab, instantiate, Vec3, SystemEvent, EventMouse, Animation } from 'cc';
 const { ccclass, property } = _decorator;
 
 
 type TileType = {
+    colIndex: number,
     isCheckedOutNeighboring: boolean,
     node: Node
 } 
@@ -26,6 +27,9 @@ export class FieldController extends Component {
     private minNumberOfTilesForBlast: number = 2;
     private checkingIsPossibilityToBlast: boolean = false;
 
+    private minNumberOfBlastedTilesForSuperTile: number = 4;
+    private isSuperTile: {colIndex: number, rowIndex: number} | null = null;
+
     @property({type: Prefab})
     private greenPrefab: Prefab | null = null;
     @property({type: Prefab})
@@ -39,30 +43,41 @@ export class FieldController extends Component {
 
     private tilePrefabs: Prefab[] | null[] = [];
 
+    @property({type: Prefab})
+    private superPrefab: Prefab | null = null;
+
     onLoad() {
         this.tilePrefabs = [
-            this.greenPrefab, this.bluePrefab, this.yellowPrefab, this.purplePrefab, this.redPrefab
+            this.greenPrefab, 
+            this.bluePrefab, 
+            this.yellowPrefab, 
+            this.purplePrefab, 
+            this.redPrefab
         ]
     }
 
-    setIsPlaying(status: boolean) {
+    public setIsPlaying(status: boolean) {
         if (status) {
             this.fillMatrix();
             this.isPlaying = true;
         } else {
+            // this.clearMatrix();
             this.isPlaying = false;
         }
     }
 
-    fillMatrix() {
+    private fillMatrix() {
 
         for (let i = 0; i < this.columnsAmount; i++) {
             const column: TileType[] = this.matrix[i] || [];
 
             for (let j = column.length; j < this.rowsAmount; j++) {
-                const tileObj = this.generateTileObj(null);
+                let tileObj: TileType = this.generateTileObj(i);
+ 
                 column.push(tileObj);
-                this.addTileNode(tileObj, i, j);
+
+                this.setTilePosition(tileObj, j)
+                this.addTileNode(tileObj);
             }
 
             if (!this.matrix[i]) {
@@ -71,77 +86,94 @@ export class FieldController extends Component {
                 this.matrix[i] = column;
             }
         }
+        
+        if (this.isSuperTile) {
+            this.generateSuperTile();
+        }
 
         if (this.checkingIsPossibilityToBlast) {
             this.checkPossibilityToBlast();
         }
     }
 
-    generateTileObj(prefabName: string | null) {
-        let tileNode: Node = null;
-        
-        // если в метод не передан конкретный prefab, то оно выбирается рандомно.
-        // иначе метод используется при перемешивании поля, когда матрица уже заполнена
-        // и в поле происходит перемещение тайла в новое место 
-        if (prefabName) {
-            const prefab: Prefab = this.tilePrefabs.find(prfb => prfb.data.name === prefabName)
-            if (prefab) {
-             tileNode = instantiate(prefab);   
+    public clearMatrix() {
+        for (let i = 0; i < this.matrix.length; i++) {
+            for (let j = 0; j < this.matrix[0].length; j++) {
+                this.matrix[i][j].node.destroy();
             }
-        } else {
-            const randomPrefabIndex = Math.floor(Math.random() * this.tilePrefabs.length);
-            tileNode = instantiate(this.tilePrefabs[randomPrefabIndex]);
-        }   
+        }
+        this.matrix = [];
+    };
+
+    private generateTileObj(colIndex: number): TileType {
+        let tileNode: Node = null;
+    
+        const randomPrefabIndex = Math.floor(Math.random() * this.tilePrefabs.length);
+        tileNode = instantiate(this.tilePrefabs[randomPrefabIndex]); 
 
         return {
-            isCheckedOutNeighboring: false, // - поле используется при рекурсивном 
-            // обходе матрицы при проверке прилигающих плиток
+            colIndex, // - индекс столбца для оптимизации поиска в матрице. 
+            // индекс по строке не добавил, так как тайлы падают сверху вниз 
+            // и потребуется лишний код для постаянной актуализации
+            //  который, думаю, не будет оптимальнее линейного поиска
+
+            isCheckedOutNeighboring: false, // - свойство используется при рекурсивном 
+            // обходе матрицы для проверке прилигающих плиток
+
             node: tileNode
         }
 
     }
 
-    addTileNode(tileObj: TileType, colIndex: number, rowIndex: number) {
-
-        tileObj.node.setPosition(new Vec3(
-            this.firstColumnPositionByX + (this.tileSize + this.sideSpace) * colIndex + this.sideSpace, 
-            this.fieldHeight/2 + this.tileSize*rowIndex,
-        ));
-
+    private addTileNode(tileObj: TileType) {
+        
         setTimeout(() => {
             this.node.addChild(tileObj.node); 
         }, 100); 
         
-        const onTileNodeClick = (event: EventMouse) => { 
+        tileObj.node.on(SystemEvent.EventType.MOUSE_UP, (event: EventMouse) => {
+
             if (event.getButton() === 0) {
-              this.onTileClick(tileObj);  
+                this.onTileClick(tileObj);
             }
-        }
-        tileObj.node.on(SystemEvent.EventType.MOUSE_UP, onTileNodeClick);
+        });
     }
 
-    onTileClick(tileObj: TileType) {
+  
+
+    private setTilePosition(tileObj: TileType, rowIndex: number) {
+    
+        tileObj.node.setPosition(new Vec3(
+            this.firstColumnPositionByX + (this.tileSize + this.sideSpace) * tileObj.colIndex + this.sideSpace, 
+            this.fieldHeight/2 + this.tileSize*rowIndex,
+        ));
+    }
+
+    private onTileClick(tileObj: TileType) {
         if (!this.isPlaying) {
             return;
         }
 
-        const sameTiles = this.checkNeighbors(tileObj, true);
+        const sameTiles = this.checkNeighbors(tileObj);
 
-        if (sameTiles) {
-            this.blastTiles(sameTiles);
+        if (sameTiles.length >= this.minNumberOfBlastedTilesForSuperTile) {
+            this.setSuperTile(tileObj);
         }
+
+        if (sameTiles.length < this.minNumberOfTilesForBlast) {
+            this.resetCheckedTiles(sameTiles);
+        } else {
+            this.blastTiles(sameTiles); 
+        }
+        
     }
 
-    checkNeighbors(tileObj: TileType, forBlast: boolean) {
+    private checkNeighbors(tileObj: TileType) {
     // возвращает массив одинаковых прилигающих к tileObj плиток
-
-    // если флаг forBlast === false то проверка поисходит 
-    // только на возможность следующего хода а не для сжигания
 
         const tileNodeName = tileObj.node.name;
         const sameTiles: TileType[] = [];
-        const {col, row} = this.getTilePosition(tileObj);
-        
+
         const check = (col: number, row: number) => {
             const curTile = this.matrix[col][row];
             
@@ -163,93 +195,125 @@ export class FieldController extends Component {
                 check(col+1, row);
             }
         }
-        check(col, row);
-
-        if (sameTiles.length < this.minNumberOfTilesForBlast) {
-        // если количество прилигающих одинаковых плиток меньше необходимого 
-        // числа для сжигания, то поля isCheckedOutNeighboring будут
-        // возвращены в false
-            sameTiles.forEach(tile => tile.isCheckedOutNeighboring = false);
-            return null;
-        }
-        
-        if (!forBlast) {
-        // если проверка только для вычисления возможности следующего хода,
-        // то не зависимо от длины sameTiles выбранные так же будут отменены
-            sameTiles.forEach(tile => tile.isCheckedOutNeighboring = false);
-        }
+        check(tileObj.colIndex, this.getTileRowIndex(tileObj));
 
         return sameTiles;
     }
 
-    getTilePosition(tileObj: TileType) {
-        let pos: {col: number, row: number} = null;
-        for (let i = 0; (i < this.matrix.length && !pos); i++) {
-
-            for (let j = 0; j < this.rowsAmount && !pos; j++) {
-
-                if (this.matrix[i][j].node === tileObj.node) {
-                    pos = {col: i, row: j}
-                }
-            }
-        }
-        return pos;
+    private resetCheckedTiles(tiles: TileType[]) {
+        tiles.forEach(tile => tile.isCheckedOutNeighboring = false);
     }
 
-    blastTiles(sameTiles: TileType[]) {
+    private getTileRowIndex(tileObj: TileType) {
+        const col = this.matrix[tileObj.colIndex];
+
+        for (let i = 0; i < col.length; i++) {
+
+            if (col[i].node === tileObj.node) {
+                return i 
+            }
+        }
+    }
+
+    private blastTiles(sameTiles: TileType[]) {
         sameTiles.forEach(tile => {
-            tile.node.destroy();
+            tile.node.getComponent(Animation)?.play();
+            setTimeout(() => {
+                tile.node.destroy();
+            }, 200);
         });
         // после удаления узлов плиток из поля, так же удаляются
         // их объекты из матрицы 
         this.matrix = this.matrix.map(col => {
             return col.filter(tile => !tile.isCheckedOutNeighboring);
         })
-        // после чего метод fillMatrix заполняет не полные столбцы
-        this.fillMatrix();
         
-        // событие для счётчика в менеджере
-        this.node.emit("TurnEnd", sameTiles.length);
+        setTimeout(() => {
+            // после чего метод fillMatrix заполняет не полные столбцы
+            this.fillMatrix();
+
+            // событие для счётчика в менеджере
+            this.node.emit("TurnEnd", sameTiles.length);
+
+        }, 200);
+        
     }
 
-    shuffleMatrix() {
+    private setSuperTile(tileObj: TileType | null) {
+    // если this.superTile будет содержать объект с координатами,
+    // то после заполнении матрицы будет вызываться this.generateSuperTile
+        if (tileObj) {
+            this.isSuperTile = {
+                colIndex: tileObj.colIndex,
+                rowIndex: this.getTileRowIndex(tileObj)
+            } 
+        } else {
+            this.isSuperTile = null;
+        }
+
+    }
+
+    private generateSuperTile() {
+        
+        const {colIndex, rowIndex} = this.isSuperTile;
+        const superTileObj = this.matrix[colIndex][rowIndex];
+
+        superTileObj.node.name = "super";
+        superTileObj.node.addChild(instantiate(this.superPrefab));
+
+        // отменяется стандартное поведение плитки по клику
+        superTileObj.node.off(SystemEvent.EventType.MOUSE_UP);
+
+        superTileObj.node.on(SystemEvent.EventType.MOUSE_UP, () => {
+        // супер тайл сжигает весь столбец 
+            const thisCol = this.matrix[superTileObj.colIndex]
+            this.matrix[superTileObj.colIndex] = []
+            this.blastTiles(thisCol);
+        })
+
+        this.setSuperTile(null);
+    }
+
+    public shuffleMatrix() {
     // Перемешивает уже имеющиеся на поле плитки.
     // Возможно стоит оптимизировать, но метод вызывается довольно редко, 
     //   поэтому пока оставлю 
 
+        if (!this.isPlaying) {
+            return;
+        }
         for (let i = this.matrix.length - 1; i > 0; i-- ) {
             let tmpCol = this.matrix[i];
             let rndColI = Math.floor(Math.random() * (i + 1));
+            let rndCol = this.matrix[rndColI];
 
-            for (let j = tmpCol.length - 1; j > 0; j-- ) {
-                const tmpTile = tmpCol[j];
+            for (let j = rndCol.length - 1; j > 0; j-- ) {
+                const tmpTile = rndCol[j];
                 const rndRowIndex = Math.floor(Math.random() * (j + 1));
-                tmpCol[j] = tmpCol[rndRowIndex];
-                tmpCol[rndRowIndex] = tmpTile;
-            }
 
-            this.matrix[i] = this.matrix[rndColI];
+                rndCol[j] = rndCol[rndRowIndex];
+                rndCol[rndRowIndex] = tmpTile;
+
+            }
+            this.matrix[i] = rndCol;
             this.matrix[rndColI] = tmpCol;
         }
-        
+
         for (let i = 0; i < this.columnsAmount; i++) {
-
             for (let j = 0; j < this.rowsAmount; j++) {   
-                const newTile = this.generateTileObj(this.matrix[i][j].node.name);
-                const oldTile = this.matrix[i][j];
-                this.matrix[i][j] = newTile;
-                oldTile.node.destroy();
-
-                this.addTileNode(newTile, i, j);   
+                const tile = this.matrix[i][j];
+               
+                tile.colIndex = i; // актуальный номер столбца 
+                this.setTilePosition(tile, j);  
             }
         }
-
+        
         if (this.checkingIsPossibilityToBlast) {
             this.checkPossibilityToBlast();
         }
     }
 
-    setCheckingIsPossibilityToBlast(isChecking: boolean) {
+    public setCheckingIsPossibilityToBlast(isChecking: boolean) {
         // если checkingIsPossibilityToBlast === true, то после каждого хода 
         // будет выполнятся проверка на возможность дальнейших ходов 
         this.checkingIsPossibilityToBlast = isChecking;
@@ -259,17 +323,19 @@ export class FieldController extends Component {
         
     }
 
-    checkPossibilityToBlast() {
+    private checkPossibilityToBlast() {
     // проверка на возможность дальнейших ходов
         let isPossible: boolean = false;
-        let count = 0;
+
         for (let i = 0; (i < this.matrix.length && !isPossible); i++) {
 
             for (let j = 0; j < this.rowsAmount && !isPossible; j++) {
-                count++
-                if (this.checkNeighbors(this.matrix[i][j], false)) {
+
+                const sameTiles = this.checkNeighbors(this.matrix[i][j])
+                if (sameTiles.length >= this.minNumberOfTilesForBlast) {
                     isPossible = true;
                 }   
+                this.resetCheckedTiles(sameTiles);
             }
         }
         
